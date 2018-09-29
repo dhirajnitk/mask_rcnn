@@ -1,0 +1,70 @@
+========================================================================
+- Challenges you faced and how you resolved it
+ => Aim was to extract scooter handle  with traditional Image processing approach and find it's rotation angle. Due to light variance, rotation and  occlusion, it was not possible to find out the exact blob at all times without Deep learning approach(at times there would be many scooters/bikes in the scene).
+
+ Moreover I didnt want to make a deterministic image processing algorithm which wont scale for all scooter types. so I resorted to CNN's
+
+Normal Assumptions: 
+1. Scooter avg speed is between 20/50 KMPH(6-14 m/second) in city traffic
+2. Avg turn in road is approx 5/10 meter in radius of curvature.
+3. Avg time to make a turn is [~0.5-1 second]
+
+What we know:
+1. Camera is held by  pinion passenger. Frame of refernce for the image/video is back of scooter
+2. Video frame rate is 29.97/second. Resolution is 480(width) x 360(height)
+3. The time to negotiate turn is at least 0.5 second, so there is no need to waste 30 *0.5 frames 
+applying  image processing on it. 
+
+That means, any shake up of scooter handles on straight road is noise. For higher precision, 1 in every 5 frame is evaluated and 4 are skipped. Next 4 frames get same value as the last frame evaluated by CNN.
+
+Image Acquisition:
+
+1. Video is Sampled every 10th frame from the video.
+2. Removed 1/3rd of row top from picture. So Final resolution is  reduced to 480 x 240
+3. Region based detections like Faster R-cnn used feature extractor to find image features. They use region proposal network to create ROI's. The ROI are warped and fed into fully conntected layes to give us classification/bounding box prediction but getting a bounding box of scooter is not suffiicent without segmentation.
+
+4. Mask R-CNN performs image segmentation with high accuracy. Functionally, Mask R-CNN is combination of faster R-CNN  with FCN(Fully convoluted network).
+Mask R-CNN used roi align without digitization to make every target cell of same size. The ROI pooling layers are followed by 2 Convoltion layers in order to build the mask. 
+
+
+===========================================================================================================
+- Description of the technique you used
+
+=> Explained above.
+
+Rather than, use 80 classes of Coco(Common objects in context) and waste resources on calculating so many class scores with different types of anchors. It is most frruitful to  apply same apporach for  two objects(Scooter Front handle Segment and BackGround)
+
+1. Out of 2230 images extracted from video , I manually annotated 60 training and 40 validation images of scooter handles using a VGG annotator for the closed curve shape. The resultant json file(via_region_data.json) in training/val is list of vector of x, y co-ordinates for every annotated image. 
+
+ 
+2. I have used the balloon.py as reference code from MatterPort implementation using pre trained coco model to carry out transform learning.
+ 
+3. After having segmented the handle of scooter, I extracted the contour from the mask.
+The contour mask was run with cv2 fit Ellipse function which returns rotated rectangle in which the ellipse is inscribed. Then, I applied a basic left, right thresholding of 85, 95 degree to detect the left and right rotation.
+
+4. find_direction, function detect_and_find_direction in custom.py contains the maing logic to calculate orientation.
+
+========================================================================
+- Resolution of the image you consumed
+=> 480 x 240
+========================================================================
+- Resource utilizations. How would you reduce resource needs
+=> Skipping video frames, Downsampling images.
+========================================================================
+- How does image size impact your results for accuracy and performance
+=>  Image size doesnt impact the R-Mask CNN process as they are all sampled to 1024 x 1024.
+
+- Metrics you are using to measure accuracy
+
+=> Log losses for Bounding Box loss, Class Loss and  Mask Loss
+
+========================================================================
+- Training and inference code
+
+=> https://github.com/dhirajnitk/mask_rcnn/
+(Little sensitive): https://drive.google.com/open?id=1kHDb7Glocnvelez_uTgimbxYSs-0206L
+
+================================
+Future work
+=================================
+=>Noise cancellation on orientation detection in the code can be added. In road turns, right and left come occasional and they are followed by striaght. So it makes more sense to ignore handle minor left/right slight orientations.
